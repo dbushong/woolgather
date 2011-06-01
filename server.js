@@ -7,6 +7,14 @@ var express = require('express')      // expressjs.com
 
 var webClients = [];
 
+function broadcast(from, to, msg) {
+  var act = msg.match(/^\01ACTION\s+(.+)\01$/);
+  if (act) msg = act[1];
+  webClients.forEach(function (webc) {
+    webc.send({ from: from, to: to, msg: msg, action: !!act });
+  });
+}
+
 var client = new irc.Client('localhost', 'dpb', { autoConnect: false });
 
 client.addListener('registered', function () {
@@ -31,10 +39,7 @@ client.addListener('part', function (chan, nick, reason) {
 });
 
 client.addListener('message', function (from, to, msg) {
-  // if msg =~ /^\01ACTION (...)\01$/ then it's an emote
-  webClients.forEach(function (webc) {
-    webc.send({ from: from, to: to, msg: msg });
-  });
+  broadcast(from, to, msg);
   if (to == 'dpb' && msg == 'quit') client.disconnect('bye!');
 });
 
@@ -77,12 +82,16 @@ app.get('/', function (req, res) {
 
 app.listen(7776);
 
-socket.on('connection', function (client) {
+socket.on('connection', function (wclient) {
   console.log('web client connected');
-  webClients.push(client);
-  client.on('message', function (msg) {
+  webClients.push(wclient);
+  wclient.on('message', function (msg) {
+    var act = msg.msg.match(/^\/me\s+(.+)/);
+    if (act) msg.msg = '\01ACTION ' + act[1] + '\01';
+    client.say('#node', msg.msg);
+    broadcast('dpb', '#node', msg.msg); // fake msg from us
   });
-  client.on('disconnect', function () { 
+  wclient.on('disconnect', function () { 
     console.log('web client disconnected');
   });
 });
