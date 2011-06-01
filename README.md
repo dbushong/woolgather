@@ -28,3 +28,35 @@ Self-contained server
 ---------------------
 
 * Using [Node.js](http://nodejs.org/)
+
+Architecture
+============
+
+"What architecture, isn't this just a client in front of the Real Work of an 
+IRC Server?"  Oh, if only it were that easy. 
+
+Database
+--------
+
+Logs & user preferences will be persisted in MongoDB, as it provides efficient
+methods for log-styled asynchronous storage.  Upon startup, the server will
+check the user preferences for desired persistent connections and connect to 
+the IRC server, recording messages seen in the relevant channels to the 
+database.
+
+When a user logs into the web interface, an appropriate level of scrollback
+will be retrieved from the DB (repeated as many times as possible until the
+client is up-to-date), then the connection will entire "real-time" mode and
+future updates will be sent both to the database and to the client.  Each
+real-time update will come with a unique msg identifier, as well as the 
+identifier of the immediately preceding msg, guaranteeing that the client
+always receives a complete set of messages and allowing it to switch back 
+into history playback mode as required.
+
+When the user *sends* a message (and receipt is confirmed by the relevant
+server), the message will be logged to the db and only then mirrored back to 
+the client for display.
+
+Full-text searching will be faked for now by using an indexed searchable words
+array column in Mongo.  (perhaps stemmed?  we'll fake multi-word sequence
+searches w/ post-filtering)
