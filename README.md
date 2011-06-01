@@ -1,3 +1,8 @@
+Status
+======
+
+Work has just begun; nothing significant is yet functional.
+
 Overview
 ========
 
