@@ -63,8 +63,8 @@ server), the message will be logged to the db and only then mirrored back to
 the client for display.
 
 Full-text searching will be faked for now by using an indexed searchable words
-array column in Mongo.  (perhaps stemmed?  we'll fake multi-word sequence
-searches w/ post-filtering)
+array field in Mongo, searched with the `$all` modifier (perhaps stemmed?)
+We'll fake multi-word sequence searches w/ post-filtering.
 
 DB Schema
 ---------
