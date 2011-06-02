@@ -40,7 +40,7 @@ Architecture
 "What architecture, isn't this just a client in front of the Real Work of an 
 IRC Server?"  Oh, if only it were that easy. 
 
-Database
+Overview
 --------
 
 Logs & user preferences will be persisted in MongoDB, as it provides efficient
@@ -65,3 +65,31 @@ the client for display.
 Full-text searching will be faked for now by using an indexed searchable words
 array column in Mongo.  (perhaps stemmed?  we'll fake multi-word sequence
 searches w/ post-filtering)
+
+DB Schema
+---------
+
+### log ###
+    { _id:  <Timestamp>
+    , msg:  '<text>'
+    , wds:  [ '<word>', ... ]
+    , from: '<nick>'
+    , act:  <true|false> // roll this into msg somehow for space reasons?
+    , to:   { u: '<rpx ident>', c: '<conn name>', t: '<#channel or nick>' }
+    }
+    db.log.ensureIndex({ "to.u": 1, wds: 1 })
+
+### users ###
+    { _id:   '<rpx ident>'
+    , conns: { '<name>': { host:     '<host:port>'
+                         , ssl:      <true|false>
+                         , active:   <true|false>
+                         , last_try: <Date>
+                         , nick:     '<nick>'
+                         , user:     '<username>' // TODO
+                         , pass:     '<password>' // TODO
+                         , chans:    [ '<name>', ... ]
+                         }
+             , ...
+             }
+    }
