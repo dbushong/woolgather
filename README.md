@@ -69,19 +69,27 @@ We'll fake multi-word sequence searches w/ post-filtering.
 DB Schema
 ---------
 
-### log ###
-    { _id:  <Timestamp>
-    , msg:  '<text>'
-    , wds:  [ '<word>', ... ]
-    , from: '<nick>'
-    , act:  <true|false> // roll this into msg somehow for space reasons?
-    , to:   { u: '<rpx ident>', c: '<conn name>', t: '<#channel or nick>' }
+### collection: log_<db.users.conns.<name>._id> entry ###
+    // required
+    { _id:      <Date>
+    , wds:      [ '<word>', ... ] // inc. words from misc. string fields
+    // optional, in various combinations
+    , msg:      '<text>'    // public, private, or action text
+    , from:     '<nick>'    // inc. if not a server msg
+    , chan:     '<channel>' // inc. if msg is broadcast
+    , action:   true        // inc. if an emote
+    , join:     true        // inc. if 'from' joined 'chan'
+    , new_nick: '<nick>'    // inc. if 'from' switched nicks
+    , left:     true        // inc. if 'from' left 'chan' with reason 'msg'
+    , topic:    true        // inc. if 'msg' was a topic change by 'chan'
+    , kickee:   '<nick>'    // inc. if 'from' kicked 'kickee' with reason 'msg'
     }
-    db.log.ensureIndex({ "to.u": 1, wds: 1 })
+    db.log_<oid>.ensureIndex({ chan: 1, wds: 1 })
 
-### users ###
+### collection: users ###
     { _id:   '<rpx ident>'
-    , conns: { '<name>': { host:     '<host:port>'
+    , conns: { '<name>': { _id:      <ObjectId>
+                         , host:     '<host:port>'
                          , ssl:      <true|false>
                          , active:   <true|false>
                          , last_try: <Date>
@@ -93,3 +101,12 @@ DB Schema
              , ...
              }
     }
+
+### sample queries ###
+
+#### search for: dogs "are cute"  ####
+    db.log_<oi>.find({ chan: '<chan>', wds: { $all: ['dogs', 'are', 'cute'] } })
+    // then post-filter to ensure "are cute" appears sequentially
+
+#### retrieve last 10 msgs for a user in a channel ####
+    db.log_<oi>.find({ chan: '<chan>'} }).sort({ _id: -1 }).limit(10)
