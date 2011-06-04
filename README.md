@@ -3,7 +3,7 @@ Status
 
 Work has just begun; nothing significant is yet functional.  Next steps:
 
-* Log client IRC traffic to mongo
+* Make mongo IRC logging more reliable (avoid date race condition on _id)
 * Use session ID cookie to connect Socket.IO connection to web login
 * Connection configuration web interface 
 * New connection scrollback presentation
