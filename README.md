@@ -105,7 +105,8 @@ DB Schema
     , username: '<desired username>'
     , name:     '<real name>'
     , conns:    { '<name>': { _id:      <ObjectId>
-                            , host:     '<host:port>'
+                            , host:     '<host>'
+                            , port:     <port>
                             , ssl:      <true|false>
                             , active:   <true|false>
                             , nick:     '<nick>'
