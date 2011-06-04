@@ -1,7 +1,13 @@
 Status
 ======
 
-Work has just begun; nothing significant is yet functional.
+Work has just begun; nothing significant is yet functional.  Next steps:
+
+* Log client IRC traffic to mongo
+* Use session ID cookie to connect Socket.IO connection to web login
+* Connection configuration web interface 
+* New connection scrollback presentation
+* Much, much more...
 
 Overview
 ========
@@ -66,6 +72,12 @@ Full-text searching will be faked for now by using an indexed searchable words
 array field in Mongo, searched with the `$all` modifier (perhaps stemmed?)
 We'll fake multi-word sequence searches w/ post-filtering.
 
+Authentication
+--------------
+
+For web app login I'll probably use `connect-rpx`, and hopefully bastardize
+the session id from this for Socket.IO authentication.
+
 DB Schema
 ---------
 
@@ -92,7 +104,6 @@ DB Schema
                          , host:     '<host:port>'
                          , ssl:      <true|false>
                          , active:   <true|false>
-                         , last_try: <Date>
                          , nick:     '<nick>'
                          , user:     '<username>' // TODO
                          , pass:     '<password>' // TODO
