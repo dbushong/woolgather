@@ -1,34 +1,28 @@
-var express = require('express')      // expressjs.com
-  , io      = require('socket.io')    // socket.io
-  , irc     = require('irc')          // github.com/martynsmith/node-irc
-  , rpx     = require('express-rpx')  // github.com/dbushong/connect-rpx
-  , mstore  = require('connect-session-mongo') // github.com/bartt/c..-s..-m..
-  , app     = express.createServer()
-  , socket  = io.listen(app)
-  , users   = {}
-  , db      = require('mongoskin')
-                .db('localhost/woolgather?auto_reconnect')
+var express   = require('express')      // expressjs.com
+  , io        = require('socket.io')    // socket.io
+  , irc       = require('irc')          // github.com/martynsmith/node-irc
+  , rpx       = require('express-rpx')  // github.com/dbushong/connect-rpx
+  , mstore    = require('connect-session-mongo') // github.com/bartt/...
+  , app       = express.createServer()
+  , socket    = io.listen(app)
+  , irc_conns = {}
+  , backlog   = 10 // TODO: make this configurable per connection (channel?)
+  , debug     = true // TODO: make this a startup flag
+  , db        = require('mongoskin') // TODO: make dbname a startup flag
+                  .db('localhost/woolgather?auto_reconnect')
   ;
 
 //
 // Step 1: collect users from db and open active IRC connections
 //
 
-/*
-db.collection('users').find().each(function (err, user) {
-  users[user._id] = user; // cache details in-process
-  if (!user.conns) return;
-  var conn, cname, client;
-  for (cname in user.conns) {
-    conn = user.conns[cname];
-    if (conn.active) {
-      client = new irc.Client(conn.host, conn.nick, { autoConnect: false });
-      addIRCClientListeners(client, conn.chans);
-      client.connect();
-    }
+db.collection('users').findEach(function (err, user) {
+  if (!user /* wtf!? */ || !user.conns) return;
+  for (var cname in user.conns) {
+    if (user.conns[cname].active)
+      initIRCClient(user, cname); // TODO use user/pass
   }
 });
-*/
 
 //
 // Step 2: set up RPX authentication
@@ -40,8 +34,8 @@ rpx.config('logoutPoint',       '/logout');
 rpx.config('loginPage',         '/login');
 rpx.config('onSuccessfulLogin', function (json, req, res, next) {
   req.sessionStore.regenerate(req, function (err) {
-    console.log('RPX Login', { json: json, err: err });
-    console.log('SessionID', req.sessionID);
+    // console.log('RPX Login', { json: json, err: err });
+    // console.log('SessionID', req.sessionID);
     req.session.profile  = json.profile;
     req.session.username = json.profile.identifier;
     res.writeHead(302, { 'Location': '/' });
@@ -100,64 +94,122 @@ app.listen(7776);
 // Functions
 //
 
-function addIRCClientListeners(client, chans) {
+function initIRCClient(user, cname) {
+  var conn   = user.conns[cname]
+    , dblog  = db.collection('log_' + conn._id)
+    , client = new irc.Client(conn.host, conn.nick,
+                               { autoConnect: false 
+                               , userName:    user.username
+                               , realName:    user.name
+                               , port:        conn.port
+                               }
+                             )
+    ;
+
+  console.log('opening IRC connection "'+cname+'" for user: ' + user._id);
+
+  function log(stuff) {
+    // TODO: handle date collisions (in .insert() error handling?)
+    stuff._id = new Date;
+    // TODO: stemming?
+    if (stuff.msg)
+      stuff.wds = stuff.msg.replace(/^\s+|\s+$/g, '').replace(/[^\w\s]/g, '')
+                           .toLowerCase().split(/\s+/)
+    if (stuff.chan) stuff.chan = stuff.chan.replace(/^#/, '');
+    dblog.insert(stuff, { safe: debug }, function (err) {
+      if (err) console.log('INSERT ERR', err, stuff);
+    });
+  }
+
+  // grab pointer to channel info cache
+  if (!irc_conns[user._id])        irc_conns[user._id] = {};
+  if (!irc_conns[user._id][cname]) irc_conns[user._id][cname] = {};
+  var iconn = irc_conns[user._id][cname];
+
   client.addListener('registered', function () {
-    // console.log('registered');
-    chans.forEach(function (chan) { client.join(chan); });
+    conn.chans.forEach(function (chan) {
+      if (!iconn[chan]) iconn[chan] = { users: {} };
+      client.join(chan);
+    });
+  });
+
+  client.addListener('motd', function (motd) {
+    // TODO: send motd to web client(?)
   });
 
   client.addListener('names', function (chan, nicks) {
-    console.log('names', chan, nicks);
+    for (var nick in nicks) iconn[chan].users[nick] = nicks[nick];
+    // TODO: send channel init to web client
   });
 
   client.addListener('topic', function (chan, topic, nick) {
-    console.log('topic', chan, topic, nick);
+    iconn[chan].topic = topic;
+    // TODO: send topic set/change to web client
+    log({ msg: topic, from: nick, chan: chan });
   });
 
-  client.addListener('join', function (chan, topic, nick) {
-    console.log('join', chan, topic, nick);
+  client.addListener('join', function (chan, nick) {
+    iconn[chan].users[nick] = '';
+    // TODO: update web client
+    log({ from: nick, chan: chan, join: true });
   });
 
   client.addListener('part', function (chan, nick, reason) {
-    console.log('part', chan, nick, reason);
+    delete iconn[chan].users[nick];
+    // TODO: update web client
+    log({ from: nick, chan: chan, left: true, msg: reason });
   });
 
   client.addListener('message', function (from, to, msg) {
-    broadcast(from, to, msg);
-    if (to == 'dpb' && msg == 'quit') client.disconnect('bye!');
+    var action = msg.match(/^\01ACTION\s+(.+)\01$/);
+    if (action) msg = action[1];
+    // TODO: send msg to web client
+    var stuff = { from: from, msg: msg };
+    if (/^#/.test(to)) stuff.chan = to;
+    if (action) stuff.action = true;
+    log(stuff);
   });
 
   client.addListener('quit', function (nick, reason, chans) {
-    console.log('quit', nick, reason, chans);
+    chans.forEach(function (chan) {
+      // TODO: update web client
+      delete iconn[chan].users[nick];
+      log({ from: nick, msg: reason, chan: chan, quit: true });
+    });
   });
 
   client.addListener('kick', function (chan, nick, by, reason) {
-    console.log('kick', chan, nick, by, reason);
+    delete iconn[chan].users[nick];
+    // TODO: update web client
+    log({ from: by, kickee: nick, msg: reason, chan: chan });
   });
 
   client.addListener('notice', function (nick, to, text) {
-    console.log('notice', nick, to, text);
+    // TODO: update web client
+    var stuff = { from: nick, msg: text };
+    if (/^#/.test(to)) stuff.chan = to;
+    // FIXME: log server messages?
+    // log(stuff);
   });
 
   client.addListener('nick', function (oldnick, newnick, chans) {
-    console.log('nick', oldnick, newnick, chans);
+    chans.forEach(function (chan) {
+      // TODO: update web client
+      iconn[chan].users[newnick] = iconn[chan].users[oldnick];
+      delete iconn[chan].users[oldnick];
+      log({ from: oldnick, new_nick: newnick, chan: chan });
+    });
   });
 
   client.addListener('invite', function (chan, from) {
-    console.log('invite', chan, from);
+    // TODO: update web client
+    log({ from: from, invite: true, chan: chan });
   });
 
   client.addListener('error', function (msg) {
-    console.log('error', msg);
+    // TODO: plumb what varieties of these might exist (need auto-reconnect?)
+    // TODO: update web client
   });
-}
 
-var webClients = [];
-function broadcast(from, to, msg) {
-  var act = msg.match(/^\01ACTION\s+(.+)\01$/);
-  if (act) msg = act[1];
-  webClients.forEach(function (webc) {
-    webc.send({ from: from, to: to, msg: msg, action: !!act });
-  });
+  client.connect();
 }
-

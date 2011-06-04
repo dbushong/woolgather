@@ -81,7 +81,7 @@ the session id from this for Socket.IO authentication.
 DB Schema
 ---------
 
-### collection: log_<db.users.conns.<name>._id> entry ###
+### collection: log_<db.users.<uid>.conns.<name>._id> entry ###
     // required
     { _id:      <Date>
     , wds:      [ '<word>', ... ] // inc. words from misc. string fields
@@ -93,24 +93,28 @@ DB Schema
     , join:     true        // inc. if 'from' joined 'chan'
     , new_nick: '<nick>'    // inc. if 'from' switched nicks
     , left:     true        // inc. if 'from' left 'chan' with reason 'msg'
+    , quit:     true        // inc. if 'from' quit 'chan' with reason 'msg'
     , topic:    true        // inc. if 'msg' was a topic change by 'chan'
     , kickee:   '<nick>'    // inc. if 'from' kicked 'kickee' with reason 'msg'
+    , invite:   true        // inc. if 'from' invited user to 'chan'
     }
     db.log_<oid>.ensureIndex({ chan: 1, wds: 1 })
 
 ### collection: users ###
-    { _id:   '<rpx ident>'
-    , conns: { '<name>': { _id:      <ObjectId>
-                         , host:     '<host:port>'
-                         , ssl:      <true|false>
-                         , active:   <true|false>
-                         , nick:     '<nick>'
-                         , user:     '<username>' // TODO
-                         , pass:     '<password>' // TODO
-                         , chans:    [ '<name>', ... ]
-                         }
-             , ...
-             }
+    { _id:      '<rpx ident>'
+    , username: '<desired username>'
+    , name:     '<real name>'
+    , conns:    { '<name>': { _id:      <ObjectId>
+                            , host:     '<host:port>'
+                            , ssl:      <true|false>
+                            , active:   <true|false>
+                            , nick:     '<nick>'
+                            , user:     '<username>' // TODO
+                            , pass:     '<password>' // TODO
+                            , chans:    [ '<name>', ... ]
+                            }
+                , ...
+                }
     }
 
 ### sample queries ###
