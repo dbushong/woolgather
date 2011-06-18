@@ -83,7 +83,7 @@ DB Schema
 
 ### collection: log_<db.users.<uid>.conns.<name>._id> entry ###
     // required
-    { time:     <Date>
+    { _id:      <objectid>  // implicitly created by mongo; contains timestamp
     , wds:      [ '<word>', ... ] // inc. words from misc. string fields
     // optional, in various combinations
     , msg:      '<text>'    // public, private, or action text
