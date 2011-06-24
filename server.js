@@ -5,7 +5,9 @@ var express   = require('express')      // expressjs.com
   , mstore    = require('connect-session-mongo') // github.com/bartt/...
   , app       = express.createServer()
   , socket    = io.listen(app)
-  , irc_conns = {}
+  , users     = {} // <uid> => <db.users blob>
+  , irc_conns = {} // <uid> => <irc client handle>
+  , sio_conns = {} // <uid> => [ <sio client handle>, ... ]
   , backlog   = 10 // TODO: make this configurable per connection (channel?)
   , debug     = true // TODO: make this a startup flag
   , db        = require('mongoskin') // TODO: make dbname a startup flag
@@ -17,7 +19,9 @@ var express   = require('express')      // expressjs.com
 //
 
 db.collection('users').findEach(function (err, user) {
-  if (!user /* wtf!? */ || !user.conns) return;
+  if (!user /* wtf!? */) return;
+  users[user._id] = user; // cache, keyed by unique id
+  if (!user.conns) return;
   for (var cname in user.conns) {
     if (user.conns[cname].active)
       initIRCClient(user, cname); // TODO use user/pass
@@ -26,8 +30,8 @@ db.collection('users').findEach(function (err, user) {
 
 //
 // Step 2: set up RPX authentication
-// 
 //
+
 rpx.config('ignorePaths',       [ '/stylesheets', '/images', '/javascripts' ]);
 rpx.config('reentryPoint',      '/rpx');
 rpx.config('logoutPoint',       '/logout');
@@ -38,6 +42,15 @@ rpx.config('onSuccessfulLogin', function (json, req, res, next) {
     // console.log('SessionID', req.sessionID);
     req.session.profile  = json.profile;
     req.session.username = json.profile.identifier;
+    if (!users[json.profile.identifier]) {
+      var user = users[json.profile.identifer] =
+        { _id:      json.profile.identifier
+        , username: json.profile.preferredUsername
+        , name:     json.profile.displayName
+        , conns:    {}
+        };
+      db.collection('users').insert(user);
+    }
     res.writeHead(302, { 'Location': '/' });
     res.end();
   });
@@ -53,6 +66,10 @@ app.use(express.favicon());
 app.use(express.cookieParser());
 app.use(express.session({ secret: 'kittenz r cute'
                         , store:  new mstore({ db: 'woolgather' })
+                        , key:    'woolgather_sid'
+                        , cookie: { maxAge:   60*60*24*7*1000
+                                  , httpOnly: false
+                                  }
                         }));
 app.use(rpx.handler());
 app.use(app.router);
@@ -69,21 +86,7 @@ app.get('/login', function (req, res) {
 //
 // Step 3: set up Socket.IO listener
 //
-/*
-socket.on('connection', function (wclient) {
-  console.log('web client connected');
-  webClients.push(wclient);
-  wclient.on('message', function (msg) {
-    var act = msg.msg.match(/^\/me\s+(.+)/);
-    if (act) msg.msg = '\01ACTION ' + act[1] + '\01';
-    client.say('#node', msg.msg);
-    broadcast('dpb', '#node', msg.msg); // fake msg from us
-  });
-  wclient.on('disconnect', function () { 
-    console.log('web client disconnected');
-  });
-});
-*/
+socket.on('connection', initSocketIOConnection);
 
 //
 // Step 4: start webserver
@@ -98,7 +101,7 @@ function initIRCClient(user, cname) {
   var conn   = user.conns[cname]
     , dblog  = db.collection('log_' + conn._id)
     , client = new irc.Client(conn.host, conn.nick,
-                               { autoConnect: false 
+                               { autoConnect: false
                                , userName:    user.username
                                , realName:    user.name
                                , port:        conn.port
@@ -109,8 +112,6 @@ function initIRCClient(user, cname) {
   console.log('opening IRC connection "'+cname+'" for user: ' + user._id);
 
   function log(stuff) {
-    // TODO: handle date collisions (in .insert() error handling?)
-    stuff._id = new Date;
     // TODO: stemming?
     if (stuff.msg)
       stuff.wds = stuff.msg.replace(/^\s+|\s+$/g, '').replace(/[^\w\s]/g, '')
@@ -213,3 +214,82 @@ function initIRCClient(user, cname) {
 
   client.connect();
 }
+
+function initSocketIOConnection(client) {
+  console.log('Socket.IO client connected');
+
+  var user_id
+    , listeners = { start:    setupConnection
+                  , add_acct: addAccount
+                  , msg:      handleMessage
+                  }
+    ;
+
+  // set up dispatching message listener
+  client.on('message', function (env) {
+    if (!(env && env.type && env.msg)) {
+      console.error('Invalid message from Socket.IO client: ', env);
+      invalidMsg('bad envelope');
+      return;
+    }
+    var func = listeners[env.type];
+    if (!func) {
+      console.error('Unhandled message type in request: ', env);
+      send('error', { type: 'unknown_msg_type'
+                    , msg:  'Unknown message type: ' + env.type
+                    });
+      return;
+    }
+    func(env.msg);
+  });
+
+  client.on('disconnect', function () {
+    console.log('Socket.IO client disconnected');
+    // remove client from user's list of active connections
+    if (user_id && sio_conns[user_id]) {
+      sio_conns[user_id] = sio_conns[user_id].filter(function (c) {
+        return c != client;
+      });
+    }
+  });
+
+  function send(type, msg) {
+    client.send({ type: type, msg: msg });
+  }
+
+  function error(type, msg) {
+    send('error', { type: type, msg: msg });
+  }
+
+  function invalidMsg(reason) {
+    error('invalid_msg', 'Invalid message: ' + reason);
+  }
+
+  function setupConnection(bits) {
+    if (!bits || !bits.session_id) return invalidMsg('missing session_id');
+    db.collection('sessions').findOne(
+        { _sessionid: bits.session_id }, function (err, sess) {
+      if (!sess) return error('auth_failed', 'Invalid session_id');
+      user_id = sess.username;
+      var user = users[user_id];
+      if (!user) return error('auth_failed', 'User account missing!?');
+      if (!sio_conns[user_id]) sio_conns[user_id] = [];
+      sio_conns[user_id].push(client);
+      send('config', user);
+    });
+  }
+
+  function addAccount(acct) {
+    // TODO: implement
+  }
+
+  function handleMessage(msg) {
+    // TODO: implement
+  }
+}
+/*
+var act = msg.msg.match(/^\/me\s+(.+)/);
+if (act) msg.msg = '\001ACTION ' + act[1] + '\001';
+client.say('#node', msg.msg);
+broadcast('dpb', '#node', msg.msg); // fake msg from us
+*/
