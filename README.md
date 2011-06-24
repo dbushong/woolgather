@@ -3,10 +3,9 @@ Status
 
 Work has just begun; nothing significant is yet functional.  Next steps:
 
-* Make mongo IRC logging more reliable (avoid date race condition on _id)
-* Use session ID cookie to connect Socket.IO connection to web login
 * Connection configuration web interface
 * New connection scrollback presentation
+* Multiple channel tabbed display
 * Much, much more...
 
 Overview
@@ -55,14 +54,11 @@ check the user preferences for desired persistent connections and connect to
 the IRC server, recording messages seen in the relevant channels to the
 database.
 
-When a user logs into the web interface, an appropriate level of scrollback
-will be retrieved from the DB (repeated as many times as possible until the
-client is up-to-date), then the connection will entire "real-time" mode and
-future updates will be sent both to the database and to the client.  Each
-real-time update will come with a unique msg identifier, as well as the
-identifier of the immediately preceding msg, guaranteeing that the client
-always receives a complete set of messages and allowing it to switch back
-into history playback mode as required.
+When a user logs into the web interface, their connection will be added to 
+a list on the server of those connections which should receive live updates.
+Additionally, a query will be done for an appropriate amount of backlog
+(eventually configurable).  The backlog msgs will be sent asynchronously, and
+fun will commence!
 
 When the user *sends* a message (and receipt is confirmed by the relevant
 server), the message will be logged to the db and only then mirrored back to
@@ -105,15 +101,15 @@ DB Schema
     { _id:      '<rpx ident>'
     , username: '<desired username>'
     , name:     '<real name>'
-    , conns:    { '<name>': { _id:      <ObjectId>
-                            , host:     '<host>'
-                            , port:     <port>
-                            , active:   <true|false>
-                            , nick:     '<nick>'
-                            , user:     '<username>' // TODO
-                            , pass:     '<password>' // TODO
-                            , chans:    [ '<name>', ... ]
-                            }
+    , conns:    { '<ObjectId hash>': { name:   '<display name>'
+                                     , host:   '<host>'
+                                     , port:   <port>
+                                     , active: <true|false>
+                                     , nick:   '<nick>'
+                                     , user:   '<username>' // TODO
+                                     , pass:   '<password>' // TODO
+                                     , chans:  [ '<name>', ... ]
+                                     }
                 , ...
                 }
     }
@@ -140,19 +136,22 @@ wrapped in an envelope which looks (for now) like:
 
 For example, an `auth` envelope might look like:
 
-    { type: 'auth', msg:  { session_id: 'abc' } }
+    { type: 'start', msg:  { session_id: 'abc', last_mid: null } }
 
 ### Client -> Server Messages ###
 
-#### auth ####
+#### start ####
 The client will collect the session id from its cookie and pass that through
 the socket (which doesn't see the cookie), thus correlating that session socket
-with the user.
+with the user.  If this is a reconnection attempt, the message will include
+the objectid of the most recent message received, so the server can send only
+what was missed.
 
-    { session_id: '<session_id from cookie>' }
+    { session_id: '<session_id from cookie>'
+    , last_mid:   '<hex>' // optional
+    }
 
-#### add_account ####
-An expected response would be an *config* msg
+#### add_acct ####
 
     { name: '<connection name>'
     , host: '<host>'
@@ -166,16 +165,17 @@ from the log collection specification above.  (e.g. no `_id`, `from` or
 `wds` fields are needed)  Additionally a connection id should be specified
 as field `conn`.  To whit:
 
-    { msg:      '<text>'    // public, private, or action text
+    { msg:      '<text>'     // public, private, or action text
     , to:       '<#channel or nick>' // depending on public or private msg
-    , action:   true        // inc. if an emote
-    , join:     true        // inc. if user joined 'chan'
-    , new_nick: '<nick>'    // inc. if user switched nicks
-    , left:     true        // inc. if user left 'chan' with reason 'msg'
-    , quit:     true        // inc. if user quit 'chan' with reason 'msg'
-    , topic:    true        // inc. if 'msg' was a topic change by 'chan'
-    , kickee:   '<nick>'    // inc. if user kicked 'kickee' with reason 'msg'
-    , invite:   '<chan>'    // inc. if user invited 'to' to channel 'invite'
+    , action:   true         // inc. if an emote
+    , join:     true         // inc. if user joined 'chan'
+    , new_nick: '<nick>'     // inc. if user switched nicks
+    , left:     true         // inc. if user left 'chan' with reason 'msg'
+    , quit:     true         // inc. if user quit 'chan' with reason 'msg'
+    , topic:    true         // inc. if 'msg' was a topic change by 'chan'
+    , kickee:   '<nick>'     // inc. if user kicked 'kickee' with reason 'msg'
+    , invite:   '<chan>'     // inc. if user invited 'to' to channel 'invite'
+    , conn:     '<oid hash>' // specify which connection this is for
     }
 
 ### Server -> Client Messages ###
@@ -189,16 +189,96 @@ This is for receiving chat lines.  The format is the logical subset of fields
 from the log collection specification above.  (e.g. no `wds` field is needed)
 Additionally a connection id is specified as field `conn`.  To whit:
 
-    { _id:      <ms since epoch>
-    , msg:      '<text>'    // public, private, or action text
-    , from:     '<nick>'    // inc. if not a server msg
+    { _id:      '<hex>'      // unique msg objectid hex
+    , msg:      '<text>'     // public, private, or action text
+    , from:     '<nick>'     // inc. if not a server msg
     , to:       '<#channel or nick>' // depending on public or private msg
-    , action:   true        // inc. if an emote
-    , join:     true        // inc. if 'from' joined 'chan'
-    , new_nick: '<nick>'    // inc. if 'from' switched nicks
-    , left:     true        // inc. if 'from' left 'chan' with reason 'msg'
-    , quit:     true        // inc. if 'from' quit 'chan' with reason 'msg'
-    , topic:    true        // inc. if 'msg' was a topic change by 'chan'
-    , kickee:   '<nick>'    // inc. if 'from' kicked 'kickee' with reason 'msg'
-    , invite:   '<chan>'    // inc. if 'from' invited user to channel 'invite'
+    , action:   true         // inc. if an emote
+    , join:     true         // inc. if 'from' joined 'chan'
+    , new_nick: '<nick>'     // inc. if 'from' switched nicks
+    , left:     true         // inc. if 'from' left 'chan' with reason 'msg'
+    , quit:     true         // inc. if 'from' quit 'chan' with reason 'msg'
+    , topic:    true         // inc. if 'msg' was a topic change by 'chan'
+    , kickee:   '<nick>'     // inc. if 'from' kicked 'kickee' with reason 'msg'
+    , invite:   '<chan>'     // inc. if 'from' invited user to channel 'invite'
+    , conn:     '<oid hash>' // specify which connection this is for
     }
+
+Messages are *not* guaranteed to be delivered in order, and there may on 
+occasion be duplicates, so, you know, sort that out, client code!
+
+#### error ####
+Error messages from the server.  Example:
+
+    { type: 'auth_failed'
+    , msg:  'Invalid or expired session'
+    }
+
+### Example Sessions ###
+
+#### New User ####
+
+1.  User `alice` logs into the web app using openid, with openid url 
+    `http://alice.example.com/`
+1.  She is assigned session ID `abcd` in the cookie `woolgather_sid`, and 
+    a basic user entry is created for her in the db.
+1.  When she successfully loads `/`, Socket.IO will attempt to connect to the 
+    server.
+1.  Upon successful connection, the client will send a msg of the form:
+
+        { type: 'start'
+        , msg:  { session_id: 'abcd' }
+        }
+1.  The server will verify the sid, correlate her Socket.IO connection with
+    her user identity, and reply with a `config` message something like:
+
+        { username: 'exalice42'
+        , name:     'Alice Example'
+        , conns:    {}
+        }
+1.  Having no connections configured yet, she'll see a blank chats tab.
+1.  She clicks on the Settings tab, displaying a configuration panel noting
+    she has no configured connections.
+1.  She clicks "Add new connection...", fills in some details and clicks
+    "Connect"
+1.  The client sends an `add_acct` message to the server like:
+
+        { name: 'FreeNode'
+        , host: 'irc.freenode.net'
+        , port: 6667
+        , nick: 'exalice42'
+        }
+1.  The server replies with a `config` message like:
+
+        { username: 'exalice42'
+        , name:     'Alice Example'
+        , conns:    { '01234abcdef': { name:   'FreeNode'
+                                     , host:   'irc.freenode.net'
+                                     , port:   6667
+                                     , nick:   'exalice42'
+                                     , active: true // default this to false?
+                                     , chans:  []
+                                     }
+                    }
+        }
+1.  She can now join a channel, maybe from the settings tab, maybe from the
+    chat tab, I dunno.  She types in `#kittens`, chooses her existing 
+    "FreeNode" connection, and clicks "Join"
+1.  The client sends a `msg` message to the server something like:
+
+        { to:   '#kittens'
+        , join: true
+        , conn: '01234abcdef'
+        }
+1.  The server replies with a `config` message to update the the config with
+    the new channel (overkill?) and upon succesful joinage also sends a 
+    `msg` message of the form:
+
+        { _id:  'abc01234'      // unique msg objectid hex w/ timestamp
+        , to:   '#kittens'
+        , join: true
+        , conn: '01234abcdef'
+        }
+1.  The client, seeing activity for a channel it didn't have a tab for yet,
+    creates a new tab and populates it with a "You joined the channel" message
+    including a timestamp extracted from the `_id`
