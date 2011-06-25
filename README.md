@@ -271,7 +271,11 @@ Error messages from the server.  Example:
         , conn: '01234abcdef'
         }
 1.  The server replies with a `config` message to update the the config with
-    the new channel (overkill?) and upon succesful joinage also sends a 
+    the new channel (overkill?)
+1.  The server sends a join command to the irc client
+1.  The IRC server responds to a successful join with a join message, which
+    the server stores in `log_01234abcdef`
+1.  The server passes the join msg onto the client; something like:
     `msg` message of the form:
 
         { _id:  'abc01234'      // unique msg objectid hex w/ timestamp
@@ -282,3 +286,28 @@ Error messages from the server.  Example:
 1.  The client, seeing activity for a channel it didn't have a tab for yet,
     creates a new tab and populates it with a "You joined the channel" message
     including a timestamp extracted from the `_id`
+1.  She types "hi, everyone!" into the chat field
+1.  The client sends a `msg` message:
+
+        { to:   '#kittens'
+        , msg:  'hi, everyone!'
+        , conn: '01234abcdef'
+        }
+1.  The server sends this msg on to `irc.freenode.net`
+1.  The server adds an entry to a new collection: `log_01234abcdef`:
+
+        { _id:  <objectid>  // created by mongo; contains timestamp
+        , wds:  [ 'hi', 'everyone' ]
+        , msg:  'hi, everyone!'
+        , from: 'exalice42'
+        , to:   '#kittens'
+        }
+1.  The server sends a `msg` message back to the client:
+
+        { _id:  <objectid>  // created by mongo; contains timestamp
+        , wds:  [ 'hi', 'everyone' ]
+        , msg:  'hi, everyone!'
+        , from: 'exalice42'
+        , to:   '#kittens'
+        , conn: '01234abcdef'
+        }
