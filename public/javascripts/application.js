@@ -1,6 +1,7 @@
 // TODO: emulate console.* for sucky browsers
 
 var socket
+  , config
   , listeners = { msg:    receiveMsg
                 , config: updateConfig
                 , error:  handleError
@@ -9,6 +10,10 @@ var socket
 
 function setStatus(msg) {
   $('#status').text(msg).show('fast');
+}
+
+function resetChannelTabs() {
+  $('#chan-tabs').tabs('#chan-panes > div');
 }
 
 function receiveMsg(msg) {
@@ -30,6 +35,34 @@ function receiveMsg(msg) {
 function updateConfig(cfg) {
   // TODO: something more interesting
   console.log('CONFIG: ', cfg);
+
+  // update global cache
+  config = cfg;
+
+  // rebuild HTML display
+  var $alist = $('#account-list tbody');
+  $alist.empty(); 
+
+  // no connections?
+  if (!cfg.conns) {
+    $('#account-list table').hide();
+    return;
+  }
+
+  var cid, conn, $row;
+  for (cid in cfg.conns) {
+    conn = cfg.conns[cid];
+    $row = $('<tr id="conn_' + cid + '">'
+           +   '<td><input type="checkbox"></td>'
+           +   '<td class="list-nick"></td>'
+           +   '<td class="list-host"></td>'
+           + '</tr>');
+    $row.find('input')[0].checked = conn.active;
+    $row.find('.list-nick').text(conn.nick);
+    $row.find('.list-host').text(conn.host);
+    $alist.append($row);
+  }
+  $('#account-list table').show();
 }
 
 function handleError(err) {
@@ -80,4 +113,6 @@ $(document).ready(function () {
   socket.connect();
 
   $('#status').click(function () { $(this).hide('fast'); });
+
+  resetChannelTabs();
 });

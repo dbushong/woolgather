@@ -1,6 +1,42 @@
 script(src='/socket.io/socket.io.js')
 script(src='/javascripts/application.js')
 h1 IRC
+
 #status
-#config
-#chat
+
+ul#chan-tabs.tabs
+  li
+    a(href='#') Config
+
+#chan-panes.panes
+  #config
+    #account-list
+      table
+        thead
+          tr
+            th Enabled
+            th Nick
+            th Server
+        tbody
+      ul.button-bar
+        li
+          a#delete-acct.disabled(href='#') Delete
+        li
+          a#edit-acct.disabled(href='#') Modify…
+        li
+          a#add-acct(href='#') Add…
+    form#account-details
+      .row
+        label(for='host') Host
+        input#host(type='text', name='host')
+      .row
+        label(for='port') Port
+        input#port(type='text', name='port')
+      .row
+        label(for='nick') Nick
+        input#nick(type='text', name='nick') 
+      ul.button-bar
+        li
+          a#cancel-acct(href='#') Cancel
+        li
+          a#save-acct.disabled(href='#') Save

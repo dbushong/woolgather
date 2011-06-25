@@ -1,15 +1,7 @@
 html,body,* {
   font-family: sans-serif;
 }
-#config {
-  display: none;
-  position: fixed;
-  top: 5%;
-  left: 5%;
-  width: 90%;
-  height: 90%;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-}
+
 #status {
   display: none;
   opacity: 0.9;
@@ -23,4 +15,111 @@ html,body,* {
   border-bottom: 2px solid black;
   border-bottom-right-radius: 3px;
   background-color: #ff5;
+}
+
+#account-details {
+  display: none;
+}
+
+#account-list table {
+  display: none;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+td,th {
+  border: 1px solid black;
+}
+
+.button-bar {
+  list-style-type: none;
+  display: block; 
+}
+
+.button-bar li {
+  float: right;
+}
+
+.button-bar a {
+  text-decoration: none;
+  font: bold 14px Arial,sans-serif;
+  color: black;
+  text-shadow: white 0 1px;
+  border: 1px solid #888;
+  -moz-border-radius: 4px;
+  -webkit-border-radius: 4px;
+  -o-border-radius: 4px;
+  padding: 6px 8px;
+  margin: 0 5px;
+  -moz-box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2), inset 0 1px white;
+  -webkit-box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2),inset 0 1px white;
+  background-color: #f0f4f7;
+  background-image: -webkit-gradient(linear, 0% 0%, 0% 100%, from(#f0f4f7), to(#bac9d4));
+  background-image: -moz-linear-gradient(#f0f4f7,#bac9d4);
+  outline-style: none;
+}
+
+.button-bar a.disabled {
+  color: #666;
+  cursor: default;
+}
+
+/* root element for tabs  */
+ul.tabs {  
+  margin:0 !important; 
+  padding:0;
+  height:30px;
+  border-bottom:1px solid #666;           
+}
+
+/* single tab */
+ul.tabs li {  
+  float:left;      
+  padding:0; 
+  margin:0;  
+  list-style-type:none;   
+}
+
+ul.tabs a { 
+  float:left;
+  font-size:13px;
+  display:block;
+  padding:5px 30px;       
+  text-decoration:none;
+  border:1px solid #666;  
+  border-bottom:0px;
+  height:18px;
+  background-color:#efefef;
+  color:#777;
+  margin-right:2px;
+  position:relative;
+  top:1px;        
+  outline:0;
+  border-radius: 4px 4px 0 0;
+}
+
+ul.tabs a:hover {
+  background-color:#F7F7F7;
+  color:#333;
+}
+  
+/* selected tab */
+ul.tabs a.current {
+  background-color:#ddd;
+  border-bottom:1px solid #ddd;   
+  color:#000;     
+  cursor:default;
+}
+
+  
+/* tab pane */
+.panes > div {
+  display:none;
+  border:1px solid #666;
+  border-width:0 1px 1px 1px;
+  min-height:150px;
+  padding:15px 20px;
+  background-color:#ddd;  
 }

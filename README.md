@@ -77,7 +77,7 @@ the session id from this for Socket.IO authentication.
 DB Schema
 ---------
 
-### collection: log_<db.users.<uid>.conns.<name>._id> entry ###
+### collection: log_<db.users.<uid>.conns.<conn oid>> entry ###
     // required
     { _id:      <objectid>  // implicitly created by mongo; contains timestamp
     , wds:      [ '<word>', ... ] // inc. words from misc. string fields
@@ -101,8 +101,7 @@ DB Schema
     { _id:      '<rpx ident>'
     , username: '<desired username>'
     , name:     '<real name>'
-    , conns:    { '<ObjectId hash>': { name:   '<display name>'
-                                     , host:   '<host>'
+    , conns:    { '<ObjectId hash>': { host:   '<host>'
                                      , port:   <port>
                                      , active: <true|false>
                                      , nick:   '<nick>'
@@ -153,8 +152,7 @@ what was missed.
 
 #### add_acct ####
 
-    { name: '<connection name>'
-    , host: '<host>'
+    { host: '<host>'
     , port: <port>
     , nick: '<nick>'
     }
@@ -243,8 +241,7 @@ Error messages from the server.  Example:
     "Connect"
 1.  The client sends an `add_acct` message to the server like:
 
-        { name: 'FreeNode'
-        , host: 'irc.freenode.net'
+        { host: 'irc.freenode.net'
         , port: 6667
         , nick: 'exalice42'
         }
@@ -252,8 +249,7 @@ Error messages from the server.  Example:
 
         { username: 'exalice42'
         , name:     'Alice Example'
-        , conns:    { '01234abcdef': { name:   'FreeNode'
-                                     , host:   'irc.freenode.net'
+        , conns:    { '01234abcdef': { host:   'irc.freenode.net'
                                      , port:   6667
                                      , nick:   'exalice42'
                                      , active: true // default this to false?
@@ -263,7 +259,7 @@ Error messages from the server.  Example:
         }
 1.  She can now join a channel, maybe from the settings tab, maybe from the
     chat tab, I dunno.  She types in `#kittens`, chooses her existing 
-    "FreeNode" connection, and clicks "Join"
+    connection, and clicks "Join"
 1.  The client sends a `msg` message to the server something like:
 
         { to:   '#kittens'
